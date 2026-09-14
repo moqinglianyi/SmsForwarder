@@ -1,0 +1,184 @@
+package cn.ppps.forwarder.utils
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.wifi.WifiManager
+import androidx.core.app.ActivityCompat
+import cn.ppps.forwarder.App
+import cn.ppps.forwarder.core.Core
+import cn.ppps.forwarder.server.model.SmsSendData
+import cn.ppps.forwarder.service.HttpServerService
+import com.google.gson.Gson
+import com.xuexiang.xrouter.utils.TextUtils
+import com.xuexiang.xutil.XUtil
+import com.xuexiang.xutil.security.CipherUtils
+import com.xuexiang.xutil.system.DeviceUtils
+import frpclib.Frpclib
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+
+@Suppress("OPT_IN_USAGE", "DeferredResultUnused", "DEPRECATION")
+class SmsCommandUtils {
+
+    companion object {
+
+        var TAG = "SmsCommandUtils"
+
+        //检查短信指令
+        fun check(smsContent: String): Boolean {
+            return App.SMS_COMMAND_FEATURE_ENABLED && smsContent.startsWith("smsf#")
+        }
+
+        //执行短信指令
+        fun execute(context: Context, smsCommand: String): Boolean {
+            if (!App.SMS_COMMAND_FEATURE_ENABLED) {
+                Log.w(TAG, "短信指令功能已关闭")
+                return false
+            }
+            val cmdList = smsCommand.split("#", limit = 3)
+            Log.d(TAG, "收到短信指令 function=${smsCommand.substringBefore('#')}")
+            if (cmdList.count() < 2) return false
+
+            val function = cmdList[0]
+            val action = cmdList[1]
+            val param = if (cmdList.count() > 2) cmdList[2] else ""
+            when (function) {
+                "frpc" -> {
+                    if (!App.FRPC_FEATURE_ENABLED) {
+                        Log.w(TAG, "已拒绝 Frpc 指令：该功能已关闭")
+                        return false
+                    }
+                    if (!App.FrpclibInited) {
+                        Log.d(TAG, "还未下载Frpc库")
+                        return false
+                    }
+
+                    GlobalScope.async(Dispatchers.IO) {
+                        val frpcList = if (param.isEmpty()) {
+                            Core.frpc.getAutorun()
+                        } else {
+                            val uids = param.split(",")
+                            Core.frpc.getByUids(uids, param)
+                        }
+
+                        if (frpcList.isEmpty()) {
+                            Log.d(TAG, "没有需要操作的Frpc")
+                            return@async
+                        }
+
+                        for (frpc in frpcList) {
+                            if (action == "start") {
+                                if (!HttpServerUtils.hasValidSecurityConfig()) {
+                                    Log.w(TAG, "已拒绝启动 Frpc：HTTP Server 未配置安全鉴权")
+                                    return@async
+                                }
+                                if (!Frpclib.isRunning(frpc.uid)) {
+                                    val error = Frpclib.runContent(frpc.uid, frpc.config)
+                                    if (!TextUtils.isEmpty(error)) {
+                                        Log.e(TAG, error)
+                                    }
+                                }
+                            } else if (action == "stop") {
+                                if (Frpclib.isRunning(frpc.uid)) {
+                                    Frpclib.close(frpc.uid)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                "httpserver" -> {
+                    if (!App.HTTP_SERVER_FEATURE_ENABLED) {
+                        Log.w(TAG, "已拒绝 HTTP Server 指令：该功能已关闭")
+                        return false
+                    }
+                    Intent(context, HttpServerService::class.java).also {
+                        if (action == "start") {
+                            if (!HttpServerUtils.hasValidSecurityConfig()) {
+                                Log.w(TAG, "已拒绝启动 HTTP Server：未配置安全鉴权")
+                                return false
+                            }
+                            context.startService(it)
+                        } else if (action == "stop") {
+                            context.stopService(it)
+                        }
+                    }
+                }
+
+                "system" -> {
+                    //判断是否已root
+                    if (!DeviceUtils.isDeviceRooted()) return false
+
+                    // 过滤重复消息机制
+                    var duplicateMessagesLimits = SettingUtils.duplicateMessagesLimits * 1000L
+                    if (duplicateMessagesLimits > 0L) {
+                        duplicateMessagesLimits += 10000L //系统指令多加10秒避免误操作
+                        val key = CipherUtils.md5(smsCommand)
+                        val timestamp: Long = System.currentTimeMillis()
+                        var timestampPrev: Long by HistoryUtils(key, timestamp)
+                        Log.d(TAG, "检查系统指令重复窗口=$duplicateMessagesLimits")
+                        if (timestampPrev != timestamp && timestamp - timestampPrev <= duplicateMessagesLimits) {
+                            Log.e(TAG, "过滤重复消息机制")
+                            timestampPrev = timestamp
+                            return false
+                        }
+                        timestampPrev = timestamp
+                    }
+
+                    if (action == "reboot") {
+                        DeviceUtils.reboot()
+                    } else if (action == "shutdown") {
+                        DeviceUtils.shutdown()
+                    }
+                }
+
+                "wifi" -> {
+                    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                    if (action == "on") {
+                        wifiManager.isWifiEnabled = true
+                    } else if (action == "off") {
+                        wifiManager.isWifiEnabled = false
+                    }
+                }
+
+                "sms" -> {
+                    if (action == "send") {
+                        if (TextUtils.isEmpty(param)) return false
+
+                        try {
+                            val gson = Gson()
+                            val smsSendData = gson.fromJson(param, SmsSendData::class.java)
+                            Log.d(TAG, "短信发送指令已解析，号码数量=${smsSendData.phoneNumbers.size}")
+
+                            //获取卡槽信息
+                            if (App.SimInfoList.isEmpty()) {
+                                App.SimInfoList = PhoneUtils.getSimMultiInfo()
+                            }
+                            Log.d(TAG, "已读取 SIM 信息")
+
+                            //发送卡槽: 1=SIM1, 2=SIM2
+                            val simSlotIndex = smsSendData.simSlot - 1
+                            //TODO：取不到卡槽信息时，采用默认卡槽发送
+                            val mSubscriptionId: Int = App.SimInfoList[simSlotIndex]?.mSubscriptionId ?: -1
+
+                            if (ActivityCompat.checkSelfPermission(XUtil.getContext(), Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                                return false
+                            }
+                            PhoneUtils.sendSms(mSubscriptionId, smsSendData.phoneNumbers, smsSendData.msgContent)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Parsing SMS failed: " + e.message.toString())
+                        }
+                    }
+                }
+            }
+
+            return true
+        }
+    }
+}
+
+
+

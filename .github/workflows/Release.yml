@@ -1,0 +1,11 @@
+name: Disabled legacy workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Legacy workflow disabled; use Build Android arm64-v8a.'
+

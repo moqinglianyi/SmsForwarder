@@ -1,0 +1,4 @@
+# Frpc is disabled in this build.
+# This resource is intentionally a non-routable placeholder with no remote address or token.
+serverAddr = "127.0.0.1"
+serverPort = 0
