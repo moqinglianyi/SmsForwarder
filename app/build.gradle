@@ -87,10 +87,8 @@ android {
         }
 
         ndk {
-            def targetAbi = project.findProperty('targetAbi')?.toString()
-            if (targetAbi) {
-                abiFilters targetAbi
-            } else {
+            // 定向 ABI 构建由 splits.abi 负责筛选；避免与 ndk abiFilters 冲突。
+            if (project.findProperty('targetAbi') == null) {
                 abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
             }
         }
@@ -183,7 +181,12 @@ android {
         abi {
             enable true
             reset()
-            include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            def targetAbi = project.findProperty('targetAbi')?.toString()
+            if (targetAbi) {
+                include targetAbi
+            } else {
+                include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+            }
             // 在定向 ABI 构建时不要生成包含多架构的 universal APK。
             universalApk (project.findProperty('targetAbi') == null)
         }
