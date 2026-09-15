@@ -40,6 +40,7 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
         android:windowSoftInputMode="adjustPan|stateHidden"
+        tools:replace="android:allowBackup"
         tools:ignore="DataExtractionRules,LockedOrientationActivity,UnusedAttribute">
 
         <meta-data
