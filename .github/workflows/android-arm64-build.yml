@@ -34,7 +34,7 @@ jobs:
         run: yes | "$SDKMANAGER" --licenses >/dev/null || true
 
       - name: Install Android SDK packages
-        run: "$SDKMANAGER" "platform-tools" "platforms;android-33" "build-tools;33.0.1"
+        run: '"$SDKMANAGER" "platform-tools" "platforms;android-33" "build-tools;33.0.1"'
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
