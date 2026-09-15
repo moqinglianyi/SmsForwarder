@@ -22,11 +22,19 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Locate sdkmanager
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort | tail -1)
+          echo "sdkmanager: $SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+
       - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses >/dev/null || true
+        run: yes | "$SDKMANAGER" --licenses >/dev/null || true
 
       - name: Install Android SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.1"
+        run: "$SDKMANAGER" "platform-tools" "platforms;android-33" "build-tools;33.0.1"
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
