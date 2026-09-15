@@ -96,16 +96,22 @@ android {
 
     signingConfigs {
         release {
-            keyAlias keyProps['keyAlias']
-            keyPassword keyProps['keyPassword']
-            storeFile keyProps['storeFile'] ? file(keyProps['storeFile']) : null
-            storePassword keyProps['storePassword']
+            // 仅当提供 keystore 配置时才覆盖签名，避免 CI 上缺少 keystore 导致打包失败
+            if (keyProps['storeFile']) {
+                keyAlias keyProps['keyAlias']
+                keyPassword keyProps['keyPassword']
+                storeFile file(keyProps['storeFile'])
+                storePassword keyProps['storePassword']
+            }
         }
         debug {
-            keyAlias keyProps['keyAlias']
-            keyPassword keyProps['keyPassword']
-            storeFile keyProps['storeFile'] ? file(keyProps['storeFile']) : null
-            storePassword keyProps['storePassword']
+            // 未提供 keystore 时沿用 AGP 默认 debug 签名（自动生成 debug.keystore）
+            if (keyProps['storeFile']) {
+                keyAlias keyProps['keyAlias']
+                keyPassword keyProps['keyPassword']
+                storeFile file(keyProps['storeFile'])
+                storePassword keyProps['storePassword']
+            }
         }
     }
 
