@@ -4,6 +4,7 @@ package cn.ppps.forwarder.utils
 import android.text.TextUtils
 import android.util.Base64
 import cn.ppps.forwarder.R
+import cn.ppps.forwarder.App
 import cn.ppps.forwarder.core.Core
 import cn.ppps.forwarder.entity.CloneInfo
 import cn.ppps.forwarder.entity.LocationInfo

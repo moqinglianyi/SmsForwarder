@@ -151,7 +151,7 @@ class SmsCommandUtils {
                         try {
                             val gson = Gson()
                             val smsSendData = gson.fromJson(param, SmsSendData::class.java)
-                            Log.d(TAG, "短信发送指令已解析，号码数量=${smsSendData.phoneNumbers.size}")
+                            Log.d(TAG, "短信发送指令已解析，号码数量=${smsSendData.phoneNumbers.length}")
 
                             //获取卡槽信息
                             if (App.SimInfoList.isEmpty()) {
